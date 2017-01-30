@@ -34,72 +34,88 @@ typedef signed   long long i64;
 typedef unsigned long long u64;
 typedef pair < int, int > PII;
 
-int rate=20000;
+int rate=10000;
 
-int c;
-double d,d0,d1,MAXP,pan;
-bool rec,open,door;
-vector <double> p1,p2;
-vector <double> inp1,inp2;
+//input Pressure, Ignition, Richag, Circle
+double datP,button,datR,datC;
+vector <double> vp,vb,vr,vc;
+//initial pressure & filtered cur p
+double initp,curp;
+//init richag
+double initr;
+//start recording & open door
+bool rec,open;
+//output params
+vector <double> outp,outr,outc;
+double MAXP;
 
 double VtoP(double V)
 {
-	return (V-d0)*50000/4.5;
+	return (V-initp)*50000/4.5;
 }
 
 int main()
 {
-	freopen("11.17 35l window01.dat_converted.txt","rt",stdin);
-	freopen("11.17_35l_window1.txt","wt",stdout);
+	freopen("C:\\Users\\User\\Documents\\30.01 35l 10.dat_converted.txt","rt",stdin);
+	freopen("30.01 35l 10.txt","wt",stdout);
 
-	door=1;
-	for(int i=0; cin >>c; i++)
+	for(int i=0; cin >>datP; i++)
 	{
-		cin >>d>>pan;
-		inp1.pb(d);
-		if(door)
-			inp2.pb(pan);
+		cin >>button>>datR>>datC;
+		vp.pb(datP);
+		vb.pb(button);
+		vr.pb(datR);
+        vc.pb(datC);
 		
+		//init richag
+		if(i==0)
+			initr=datR;
+		//open door
+		if(initr-datR>20.0/200)
+			open=1;
+
 		//med of begin
 		if(i<100)
 		{
-			d0+=inp1[i]/100;
-			d1=d0;
+			initp+=vp[i]/100;
+			curp=initp;
 		}
 		//med of cur
 		else
 		{
-			d1-=inp1[i-100]/100;
-			d1+=inp1[i]/100;
+			curp-=vp[i-100]/100;
+			curp+=vp[i]/100;
 		}
 
-		if(fabs(d1-d0)>0.01)
+		if(button<3.0) // dec from 5V to 1V
 			rec=1;
-		if(door)
+		if(rec && outp.size()<rate)
 		{
-			if(inp2[i]<2)
-				open=1;
-			if(open)
-				inp2[i]=0;
-		}
-		if(rec && p1.size()<rate)
-		{
-			p1.pb(inp1[i-100]);
-			if(door)
-				p2.pb(inp2[i-100]);
-			MAXP=max(MAXP,p1[p1.size()-1]);
+			//filtered P
+			outp.pb(VtoP(curp));//vp[i]);
+			//filtered Richag
+			if(open==0)
+				outr.pb(5.0);
+			else
+				outr.pb(0.0);
+			//outp.pb(vp[i]);
+			//outr.pb(vr[i]);
+			outc.pb(vc[i]);
+			MAXP=max(MAXP,outp[outp.size()-1]);
 		}
 		//dont read too much
-		if(p1.size()==rate)
+		if(outp.size()==rate)
 			break;
 	}
-	cerr <<"MAXP "<<VtoP(MAXP)<<endl;
-	forn(i,p1.size())
+	cerr <<"MAXP "<<MAXP<<endl;
+	// output all params
+	forn(i,outp.size())
 	{
-		cout <<1.0/rate*i<<'\t'<<VtoP(p1[i]);
-		if(door)
-			cout <<'\t'<<p2[i]*1000;
-		cout <<endl;
+		//time pressure richag circle
+		cout <<1.0/rate*i<<'\t'
+		     <<outp[i]<<'\t'
+		     <<200*outr[i]<<'\t'
+		     <<200*outc[i]<<endl;
 	}
 	return 0;
 }
