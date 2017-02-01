@@ -34,7 +34,12 @@ typedef signed   long long i64;
 typedef unsigned long long u64;
 typedef pair < int, int > PII;
 
+//ADC frequency
 int rate=10000;
+//filter window
+double wsize=20;
+//ignition button (1-5V) treshold
+double ignit=3.0;
 
 //input Pressure, Ignition, Richag, Circle
 double datP,button,datR,datC;
@@ -54,10 +59,37 @@ double VtoP(double V)
 	return (V-initp)*50000/4.5;
 }
 
+double ArmtoCm(double v)
+{
+	//from arm_sensor3.xls
+	return 6.9387*v*v*v - 41.593*v*v + 89.149*v - 48.223;
+}
+
+double CircleToCm(double v)
+{
+	//from torir_circle
+	return -3.8967*v + 22.275;
+}
+
+void print_data()
+{
+	// output all params
+	forn(i,outp.size())
+	{
+		//timestamp | pressure | richag | circle | CM from arm |  
+		cout <<1.0/rate*i<<'\t'
+		     <<outp[i]<<'\t'
+		     <<1600*outr[i]<<'\t'
+		     <<1600*outc[i]<<'\t'
+		     <<ArmtoCm(outr[i])<<'\t'
+		     <<CircleToCm(outc[i])<<endl;
+	}
+}
+
 int main()
 {
-	freopen("C:\\Users\\User\\Documents\\30.01 35l 10.dat_converted.txt","rt",stdin);
-	freopen("30.01 35l 10.txt","wt",stdout);
+	freopen("C:\\Users\\User\\Documents\\31.01 35l window01.dat_converted.txt","rt",stdin);
+	freopen("31.01 35l wind.txt","wt",stdout);
 
 	for(int i=0; cin >>datP; i++)
 	{
@@ -71,36 +103,42 @@ int main()
 		if(i==0)
 			initr=datR;
 		//open door
-		if(initr-datR>20.0/200)
+		if(initr-datR>0.01)
 			open=1;
 
 		//med of begin
-		if(i<100)
+		if(i<wsize)
 		{
-			initp+=vp[i]/100;
+			initp+=vp[i]/wsize;
 			curp=initp;
 		}
 		//med of cur
 		else
 		{
-			curp-=vp[i-100]/100;
-			curp+=vp[i]/100;
+			curp-=vp[i-wsize]/wsize;
+			curp+=vp[i]/wsize;
 		}
 
-		if(button<3.0) // dec from 5V to 1V
+		//begin of burning (dec from 5V to 1V)
+		if(button<ignit)
 			rec=1;
+
 		if(rec && outp.size()<rate)
 		{
 			//filtered P
 			outp.pb(VtoP(curp));//vp[i]);
 			//filtered Richag
+			outr.pb(vr[i]);
+			/*
 			if(open==0)
 				outr.pb(5.0);
 			else
 				outr.pb(0.0);
-			//outp.pb(vp[i]);
-			//outr.pb(vr[i]);
+			*/
+			//clear circle
 			outc.pb(vc[i]);
+
+			//filtered MAXP
 			MAXP=max(MAXP,outp[outp.size()-1]);
 		}
 		//dont read too much
@@ -108,14 +146,6 @@ int main()
 			break;
 	}
 	cerr <<"MAXP "<<MAXP<<endl;
-	// output all params
-	forn(i,outp.size())
-	{
-		//time pressure richag circle
-		cout <<1.0/rate*i<<'\t'
-		     <<outp[i]<<'\t'
-		     <<200*outr[i]<<'\t'
-		     <<200*outc[i]<<endl;
-	}
+	print_data();
 	return 0;
 }
