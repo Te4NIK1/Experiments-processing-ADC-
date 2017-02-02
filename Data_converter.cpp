@@ -39,113 +39,185 @@ int rate=10000;
 //filter window
 double wsize=20;
 //ignition button (1-5V) treshold
-double ignit=3.0;
+double ignitionTreshold=3.0;
+//time before ignition (ms)
+int shift=rate/10;
 
-//input Pressure, Ignition, Richag, Circle
-double datP,button,datR,datC;
-vector <double> vp,vb,vr,vc;
-//initial pressure & filtered cur p
-double initp,curp;
-//init richag
-double initr;
+//input Pressure, Ignition, Arm sensor, Wheel sensor
+double datPressure,datIgnition,datArm,datWheel;
+vector <double> inPressure,inIgnition,inArm,inWheel;
+
+//filtered Pressure, Ignition, Arm sensor, Wheel sensor
+vector <double> fiPressure,fiIgnition,fiArm,fiWheel;
+//maximum values
+double fiMaxPressure,fiMaxIgnition,fiMaxArm,fiMaxWheel;
+
 //start recording & open door
-bool rec,open;
-//output params
-vector <double> outp,outr,outc;
+int startRecording=0;
+
+//result params pressure, arm sensor, wheel sensor
+vector <double> resTime,resPressure,resIgnition,resArm,resWheel;
 double MAXP;
+
+double filterPressure(int pos, int window)
+{
+	double res=0;
+	int k=0;
+
+	for(int i=max(0,pos-window+1); i<=pos; i++,k++)
+		res+=inPressure[i];
+	return res/k;
+}
+
+double filterIgnition(int pos, int window)
+{
+	double res=0;
+	int k=0;
+
+	for(int i=max(0,pos-window+1); i<=pos; i++,k++)
+		res+=inIgnition[i];
+	return res/k;
+}
+
+double filterArm(int pos, int window)
+{
+	double res=0;
+	int k=0;
+
+	for(int i=max(0,pos-window+1); i<=pos; i++,k++)
+		res+=inArm[i];
+	return res/k;
+}
+
+double filterWheel(int pos, int window)
+{
+	double res=0;
+	int k=0;
+
+	for(int i=max(0,pos-window+1); i<=pos; i++,k++)
+		res+=inWheel[i];
+	return res/k;
+}
 
 double VtoP(double V)
 {
-	return (V-initp)*50000/4.5;
+	//Vout = VS(P x 0.018 + 0.04) ± (Pressure Error x Temp. Factor x 0.018 x VS)
+	//VS = 5.0 V ± 0.25 Vdc
+	//P=(Vout/Vs-0.04)/0.018;
+	return 1000*(V/5.0 - 0.04)/0.018;
+	//my variant
+	//return (V-fiPressure[wsize])*50000/4.5;
 }
 
-double ArmtoCm(double v)
+double ArmToCm(double v)
 {
 	//from arm_sensor3.xls
 	return 6.9387*v*v*v - 41.593*v*v + 89.149*v - 48.223;
 }
 
-double CircleToCm(double v)
+double WheelToCm(double v)
 {
 	//from torir_circle
-	return -3.8967*v + 22.275;
+	//dist 19cm from 0 to 5 V
+	return v/5.0*19;
 }
 
-void print_data()
+void printClearData()
 {
-	// output all params
-	forn(i,outp.size())
+   	freopen("31.01 35l wind_CLR.txt","wt",stdout);
+	double HIGH=1000;
+
+	forn(i,fiPressure.size())
 	{
-		//timestamp | pressure | richag | circle | CM from arm |  
-		cout <<1.0/rate*i<<'\t'
-		     <<outp[i]<<'\t'
-		     <<1600*outr[i]<<'\t'
-		     <<1600*outc[i]<<'\t'
-		     <<ArmtoCm(outr[i])<<'\t'
-		     <<CircleToCm(outc[i])<<endl;
+		//timestamp | pressure | ignition signal | arm sensor | wheel sensor 
+		//FAIL for input using FILTERED params
+		cout <<1.0*i/rate<<'\t'
+		     <<HIGH*inPressure[i]/fiMaxPressure<<'\t'
+		     <<HIGH*inIgnition[i]/fiMaxIgnition<<'\t'
+		     <<HIGH*inArm[i]/fiMaxArm<<'\t'
+		     <<HIGH*inWheel[i]/fiMaxWheel<<endl;
+	}
+}
+
+void printData()
+{
+  	freopen("31.01 35l wind_NEW.txt","wt",stdout);
+	// output all params
+	forn(i,resPressure.size())
+	{
+		//timestamp | pressure | ignition signal | arm sensor | wheel sensor | arm cm | wheel cm 
+		cout <<resTime[i]<<'\t'
+		     <<resPressure[i]<<'\t'
+		     <<1000*resIgnition[i]<<'\t'
+		     <<1000*resArm[i]<<'\t'
+		     <<1000*resWheel[i]<<'\t'
+		     <<ArmToCm(resArm[i])<<'\t'
+		     <<WheelToCm(resWheel[i])<<endl;
 	}
 }
 
 int main()
 {
 	freopen("C:\\Users\\User\\Documents\\31.01 35l window01.dat_converted.txt","rt",stdin);
-	freopen("31.01 35l wind.txt","wt",stdout);
+	freopen("31.01 35l wind_NEW.txt","wt",stdout);
 
-	for(int i=0; cin >>datP; i++)
+	for(int i=0; cin >>datPressure; i++)
 	{
-		cin >>button>>datR>>datC;
-		vp.pb(datP);
-		vb.pb(button);
-		vr.pb(datR);
-        vc.pb(datC);
-		
-		//init richag
-		if(i==0)
-			initr=datR;
-		//open door
-		if(initr-datR>0.01)
-			open=1;
+		//read lline of params
+		cin >>datIgnition>>datArm>>datWheel;
+		//datWheel*=-1;
 
-		//med of begin
-		if(i<wsize)
-		{
-			initp+=vp[i]/wsize;
-			curp=initp;
-		}
-		//med of cur
-		else
-		{
-			curp-=vp[i-wsize]/wsize;
-			curp+=vp[i]/wsize;
-		}
+		//put data
+		inPressure.pb(datPressure);
+		inIgnition.pb(datIgnition);
+		inArm.pb(datArm);
+        inWheel.pb(datWheel);
+		
+		//filter data
+		fiPressure.pb(filterPressure(inPressure.size()-1,20));
+		fiArm.pb(filterArm(inArm.size()-1,20));
+		fiWheel.pb(filterWheel(inWheel.size()-1,20));
+        
+        //max values
+        fiMaxPressure=max(fiMaxPressure,fiPressure[fiPressure.size()]);
+        fiMaxIgnition=max(fiMaxIgnition,inIgnition[inIgnition.size()]);
+		fiMaxArm=max(fiMaxArm,fiArm[fiArm.size()]);
+        fiMaxWheel=max(fiMaxWheel,fiWheel[fiWheel.size()]);
 
 		//begin of burning (dec from 5V to 1V)
-		if(button<ignit)
-			rec=1;
+		if(startRecording==0 && inIgnition[i]<ignitionTreshold)
+			startRecording=i;
 
-		if(rec && outp.size()<rate)
+		if(startRecording>0 && i-shift<0)
+			cerr <<"TOO MUCH SHIFT!"<<endl;
+		
+		//record 1 sec and time shift
+		if(startRecording>0 && resPressure.size()<rate+shift)
 		{
+			//current Time
+			resTime.pb(1.0*(i-startRecording-shift)/rate);
 			//filtered P
-			outp.pb(VtoP(curp));//vp[i]);
-			//filtered Richag
-			outr.pb(vr[i]);
-			/*
-			if(open==0)
-				outr.pb(5.0);
-			else
-				outr.pb(0.0);
-			*/
-			//clear circle
-			outc.pb(vc[i]);
-
+			resPressure.pb(VtoP(fiPressure[i-shift]));
+			
+			//original Ignition signal
+			resIgnition.pb(inIgnition[i-shift]);
+			
+			//filtered Richag sensor (sub start value)
+			resArm.pb(fiArm[i-shift]-fiArm[wsize]);
+			//filtered Wheel sensor (sub start value)
+			resWheel.pb(fiWheel[i-shift]-fiWheel[wsize]);
+			
 			//filtered MAXP
-			MAXP=max(MAXP,outp[outp.size()-1]);
+			MAXP=max(MAXP,resPressure[resPressure.size()-1]);
 		}
+
 		//dont read too much
-		if(outp.size()==rate)
+		if(resPressure.size()==rate+shift)
 			break;
 	}
+
 	cerr <<"MAXP "<<MAXP<<endl;
-	print_data();
+	//printClearData();
+	printData();
 	return 0;
 }
